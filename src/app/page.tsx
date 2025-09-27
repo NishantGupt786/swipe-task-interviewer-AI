@@ -1,103 +1,146 @@
-import Image from "next/image";
+"use client"
 
-export default function Home() {
+import Link from "next/link"
+import { Suspense, useEffect, useMemo, useState } from "react"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { useInterviewStore } from "@/lib/state"
+import { formatDistanceToNow } from "date-fns"
+
+function WelcomeBackModal() {
+  const sessions = useInterviewStore((s) => s.sessions)
+  const candidates = useInterviewStore((s) => s.candidates)
+  const [open, setOpen] = useState(false)
+
+  const inProgressOrPaused = useMemo(
+    () => Object.values(sessions).filter((sess) => sess.status === "in-progress" || sess.status === "paused"),
+    [sessions],
+  )
+
+  useEffect(() => {
+    if (inProgressOrPaused.length > 0) {
+      setOpen(true)
+    }
+  }, [inProgressOrPaused.length])
+
+  const deleteSession = useInterviewStore((s) => s.deleteSession)
+
+  if (!open) return null
+
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+    <div
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+    >
+      <Card className="w-full max-w-2xl bg-card text-card-foreground">
+        <CardHeader>
+          <CardTitle className="text-balance">Welcome back</CardTitle>
+          <CardDescription>You have unfinished sessions. Resume, delete, or export before continuing.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {inProgressOrPaused.map((sess) => {
+              const cand = candidates[sess.candidateId]
+              return (
+                <div key={sess.id} className="flex items-center justify-between rounded-md border border-border p-3">
+                  <div className="min-w-0">
+                    <p className="font-medium text-pretty">
+                      {cand?.name || "Unnamed Candidate"} · {sess.status}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Progress {sess.currentQuestionIndex}/6 · Updated{" "}
+                      {formatDistanceToNow(new Date(sess.updatedAt), { addSuffix: true })}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Link href="/interviewee">
+                      <Button size="sm" className="bg-primary text-primary-foreground hover:opacity-90">
+                        Resume
+                      </Button>
+                    </Link>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        // Simple JSON export
+                        const dataStr =
+                          "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(sess, null, 2))
+                        const a = document.createElement("a")
+                        a.href = dataStr
+                        a.download = `${cand?.name || "candidate"}-session.json`
+                        document.body.appendChild(a)
+                        a.click()
+                        a.remove()
+                      }}
+                    >
+                      Export
+                    </Button>
+                    <Button variant="destructive" size="sm" onClick={() => deleteSession(sess.id)}>
+                      Delete
+                    </Button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          <div className="mt-4 flex justify-end">
+            <Button variant="secondary" onClick={() => setOpen(false)}>
+              Close
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
-  );
+  )
+}
+
+export default function Page() {
+  return (
+    <main className="mx-auto max-w-5xl p-6">
+      <section className="flex flex-col items-center gap-6 text-center">
+        <h1 className="text-balance text-4xl font-semibold">Swipe Internship — AI Interview Assistant</h1>
+        <p className="max-w-2xl text-pretty text-muted-foreground">
+          Upload a resume, conduct a timed, structured interview with AI-generated questions, and review results on an
+          interviewer dashboard. Fully local persistence with optional Gemini API integration.
+        </p>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <Link href="/interviewee">
+            <Button className="bg-primary text-primary-foreground hover:opacity-90">Start Interview</Button>
+          </Link>
+          <Link href="/interviewer">
+            <Button variant="secondary">Open Dashboard</Button>
+          </Link>
+        </div>
+      </section>
+
+      <section className="mt-10 grid gap-6 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Candidate experience</CardTitle>
+            <CardDescription>Upload resume, answer six timed questions, get evaluated.</CardDescription>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">
+            - Resume parsing with local heuristics and optional Gemini help.
+            <br />- Timers per difficulty: 20s / 60s / 120s with auto-submit.
+            <br />- Pause/Resume and export session.
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Interviewer dashboard</CardTitle>
+            <CardDescription>Search, sort, and review detailed breakdowns.</CardDescription>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">
+            - Candidate list with score, progress, last activity.
+            <br />- Full chat, per-question breakdown, and re-evaluate actions.
+          </CardContent>
+        </Card>
+      </section>
+
+      <Suspense>
+        <WelcomeBackModal />
+      </Suspense>
+    </main>
+  )
 }
