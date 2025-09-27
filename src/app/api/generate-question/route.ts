@@ -4,11 +4,21 @@ import { callGemini } from "@/lib/gemini"
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}))
   const { candidateProfile, difficulty, previousQuestions } = body || {}
-  const prompt = `You are an interviewer assistant tasked with generating a single question for a React + Node full-stack role. Output exactly one JSON object with these fields: id, text, difficulty (easy|medium|hard), hint, expected_key_points (array). Difficulty should match the requested difficulty. Keep text concise and focused on developer skills and real-world tradeoffs. Return JSON only.
+  const prompt = `You are an interviewer assistant tasked with generating a single unique question for a React + Node full-stack role.
 
-Context: candidate profile: ${JSON.stringify(candidateProfile)}. Previously asked questions: ${JSON.stringify(
-    previousQuestions || [],
-  )}`
+Rules:
+- Output exactly one JSON object with fields: id, text, difficulty (easy|medium|hard), hint, expected_key_points (array).
+- Difficulty must match: ${difficulty}.
+- The question must NOT be semantically similar to any of the previous questions.
+- Do not repeat or paraphrase previous questions.
+- Keep text concise, realistic, and focused on developer skills and trade-offs.
+
+Context:
+- Candidate profile: ${JSON.stringify(candidateProfile)}.
+- Previously asked questions: ${JSON.stringify(previousQuestions || [])}.
+
+Return only the JSON object.`
+
 
   try {
     const raw = await callGemini({ model: process.env.GEMINI_MODEL, prompt, max_output_tokens: 400 })

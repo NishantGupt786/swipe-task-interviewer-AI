@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { shallow } from "zustand/shallow"
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -15,8 +14,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { useInterviewStore } from "@/lib/state";
 import { postJson } from "@/lib/net";
 import { Countdown } from "@/components/timer";
-import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 
 function PrivacyConsent({ candidateId }: { candidateId: string }) {
   const candidate = useInterviewStore((s) => s.candidates[candidateId]);
@@ -66,18 +73,45 @@ function PrivacyConsent({ candidateId }: { candidateId: string }) {
 
 function ResumeCard() {
   const currentSessionId = useInterviewStore((s) => s.currentSessionId);
-  const session = useInterviewStore((s) =>
-    currentSessionId ? s.sessions[currentSessionId] : undefined
-  );
-  const candidate = useInterviewStore((s) =>
-    session ? s.candidates[session.candidateId] : undefined
-  );
+  const sessions = useInterviewStore((s) => s.sessions);
+  const candidates = useInterviewStore((s) => s.candidates);
+  const session = currentSessionId ? sessions[currentSessionId] : undefined;
+  const candidate = session ? candidates[session.candidateId] : undefined;
   const updateCandidate = useInterviewStore((s) => s.updateCandidate);
   const setSessionInProgress = useInterviewStore((s) => s.setSessionInProgress);
   const generateNextQuestion = useInterviewStore((s) => s.generateNextQuestion);
 
   const [resumeText, setResumeText] = useState(candidate?.resumeText || "");
   const fileInput = useRef<HTMLInputElement | null>(null);
+  const [showProfileDialog, setShowProfileDialog] = useState(false);
+
+  async function extractFromUpload(file: File) {
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await fetch("/api/parse-upload", { method: "POST", body: fd });
+    if (!res.ok) throw new Error("Upload parse failed");
+    const data = await res.json();
+    return data as { ok: boolean; text: string };
+  }
+
+  // async function parseWithGemini() {
+  //   if (!resumeText.trim() || !candidate) return;
+  //   try {
+  //     const parsed = await postJson("/api/parse-resume", {
+  //       resumeText,
+  //       candidateId: candidate.id,
+  //     });
+  //     updateCandidate(candidate.id, {
+  //       name: parsed.name ?? candidate.name,
+  //       email: parsed.email ?? candidate.email,
+  //       phone: parsed.phone ?? candidate.phone,
+  //       resumeText,
+  //     });
+  //   } catch {
+  //     const local = localExtract(resumeText);
+  //     updateCandidate(candidate.id, { ...local, resumeText });
+  //   }
+  // }
 
   function localExtract(text: string) {
     const emailMatch =
@@ -90,25 +124,6 @@ function ResumeCard() {
         .map((l) => l.trim())
         .find(Boolean) || null;
     return { name: firstLine, email: emailMatch, phone: phoneMatch };
-  }
-
-  async function parseWithGemini() {
-    if (!resumeText.trim() || !candidate) return;
-    try {
-      const parsed = await postJson("/api/parse-resume", {
-        resumeText,
-        candidateId: candidate.id,
-      });
-      updateCandidate(candidate.id, {
-        name: parsed.name ?? candidate.name,
-        email: parsed.email ?? candidate.email,
-        phone: parsed.phone ?? candidate.phone,
-        resumeText,
-      });
-    } catch {
-      const local = localExtract(resumeText);
-      updateCandidate(candidate.id, { ...local, resumeText });
-    }
   }
 
   if (!candidate || !session) return null;
@@ -128,20 +143,44 @@ function ResumeCard() {
             <Input
               type="file"
               ref={fileInput}
+              accept=".pdf,.docx,.txt"
               onChange={async (e) => {
                 const file = e.target.files?.[0];
-                if (!file) return;
-                // For preview: read as text. In production, add pdf/docx parsers.
-                const text = await file.text();
-                setResumeText(text);
+                if (!file || !candidate) return;
                 updateCandidate(candidate.id, { resumeFilename: file.name });
+                try {
+                  console.log("Extracting text from upload...");
+                  const { ok, text } = await extractFromUpload(file);
+                  setResumeText(text || "");
+                  // If extraction looks poor and user consents, ask Gemini to parse/improve fields from text
+                  if (!ok && candidate.privacyConsent?.geminiParsing) {
+                    const parsed = await postJson("/api/parse-resume", {
+                      resumeText: text || "",
+                      candidateId: candidate.id,
+                    });
+                    updateCandidate(candidate.id, {
+                      name: parsed.name ?? candidate.name,
+                      email: parsed.email ?? candidate.email,
+                      phone: parsed.phone ?? candidate.phone,
+                      resumeText: text || "",
+                    });
+                  } else {
+                    const local = localExtract(text || "");
+                    updateCandidate(candidate.id, {
+                      ...local,
+                      resumeText: text || "",
+                    });
+                  }
+                } catch (err) {
+                  toast.error(
+                    "Failed to parse resume. Try another file or paste text."
+                  );
+                }
               }}
             />
             <Button
               variant="secondary"
-              onClick={() => {
-                fileInput.current?.click();
-              }}
+              onClick={() => fileInput.current?.click()}
             >
               Replace
             </Button>
@@ -191,34 +230,14 @@ function ResumeCard() {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="secondary"
-            onClick={() => {
-              const local = localExtract(resumeText);
-              updateCandidate(candidate.id, { ...local, resumeText });
-            }}
-          >
-            Run local parse
-          </Button>
-          <Button
-            className="bg-primary text-primary-foreground"
-            onClick={parseWithGemini}
-          >
-            Parse with AI
-          </Button>
-          <div className="ml-auto text-sm text-muted-foreground">
-            Progress {progress}
-          </div>
-        </div>
-
         <div className="flex items-center gap-2">
           <Button
             className="bg-primary text-primary-foreground"
             onClick={async () => {
-              // Ensure required fields
+              if (!candidate) return;
+              // Ensure required fields; if missing, open dialog to fill
               if (!candidate.name || !candidate.email || !candidate.phone) {
-                alert("Please provide Name, Email, and Phone to start.");
+                setShowProfileDialog(true);
                 return;
               }
               setSessionInProgress(session.id);
@@ -245,278 +264,293 @@ function ResumeCard() {
           </Button>
         </div>
       </CardContent>
+
+      <Dialog open={showProfileDialog} onOpenChange={setShowProfileDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Complete your details</DialogTitle>
+            <DialogDescription>
+              We need your name, email, and phone number before starting.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-2">
+            <div className="grid gap-1">
+              <Label htmlFor="name">Full name</Label>
+              <Input
+                id="name"
+                value={candidate?.name ?? ""}
+                onChange={(e) =>
+                  updateCandidate(candidate!.id, { name: e.target.value })
+                }
+                placeholder="Jane Doe"
+              />
+            </div>
+            <div className="grid gap-1">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                value={candidate?.email ?? ""}
+                onChange={(e) =>
+                  updateCandidate(candidate!.id, { email: e.target.value })
+                }
+                placeholder="jane@example.com"
+                type="email"
+              />
+            </div>
+            <div className="grid gap-1">
+              <Label htmlFor="phone">Phone</Label>
+              <Input
+                id="phone"
+                value={candidate?.phone ?? ""}
+                onChange={(e) =>
+                  updateCandidate(candidate!.id, { phone: e.target.value })
+                }
+                placeholder="+1 555 555 5555"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={async () => {
+                if (
+                  !candidate?.name ||
+                  !candidate?.email ||
+                  !candidate?.phone
+                ) {
+                  toast.error("Please fill all fields.");
+                  return;
+                }
+                setShowProfileDialog(false);
+                setSessionInProgress(session!.id);
+                await generateNextQuestion(session!.id);
+              }}
+              className="bg-primary text-primary-foreground"
+            >
+              Continue
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
 
-function QuestionCard() {
+function InterviewStage() {
   const currentSessionId = useInterviewStore((s) => s.currentSessionId);
   const session = useInterviewStore((s) =>
     currentSessionId ? s.sessions[currentSessionId] : undefined
   );
-  const [now, setNow] = useState(Date.now());
-  const tick = useRef<number | null>(null);
-  const submitAnswer = useInterviewStore((s) => s.submitAnswer);
   const getCurrentQuestion = useInterviewStore((s) => s.getCurrentQuestion);
-
+  const submitAnswer = useInterviewStore((s) => s.submitAnswer);
   const currentQuestion = currentSessionId
     ? getCurrentQuestion(currentSessionId)
     : undefined;
-
-  const remaining = useInterviewStore((s) =>
+  const sessions = useInterviewStore((s) => s.sessions);
+  const remaining =
     currentSessionId && currentQuestion
-      ? s.sessions[currentSessionId]?.timers[currentQuestion.id]
+      ? sessions[currentSessionId]?.timers[currentQuestion.id]
           ?.remainingSeconds ?? 0
-      : 0
-  );
+      : 0;
 
-  const [speakEnabled, setSpeakEnabled] = useState(false);
-  const utterRef = useRef<SpeechSynthesisUtterance | null>(null);
+  // === TTS state ===
+  const [autoSpeak, setAutoSpeak] = useState(true);
 
-  useEffect(() => {
-    tick.current = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => {
-      if (tick.current) window.clearInterval(tick.current);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!speakEnabled || !currentQuestion) return;
+  async function speakQuestion(text: string) {
+    if (!text.trim()) return;
     try {
-      window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(currentQuestion.text);
-      u.rate = 1;
-      u.pitch = 1;
-      u.lang = "en-US";
-      utterRef.current = u;
-      window.speechSynthesis.speak(u);
-    } catch (e) {
-      console.log("[v0] TTS error:", e);
-      toast.error("Unable to speak the question on this browser.");
-    }
-  }, [speakEnabled, currentQuestion]);
+      const res = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
 
-  if (!session || !currentQuestion) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Question</CardTitle>
-          <CardDescription>
-            Start interview to receive questions.
-          </CardDescription>
-        </CardHeader>
-      </Card>
-    );
+      if (!res.ok) throw new Error("TTS request failed");
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.play();
+    } catch (err) {
+      console.error("TTS error:", err);
+      toast.error("Unable to generate speech audio.");
+    }
   }
 
-  const difficulty = currentQuestion.difficulty;
-  const hint = currentQuestion.hint;
+  useEffect(() => {
+    if (currentQuestion && autoSpeak) {
+      speakQuestion(currentQuestion.text);
+    }
+  }, [currentQuestion, autoSpeak]);
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center justify-between">
-          <span>Question {currentQuestion.index + 1} / 6</span>
-          <span
-            className={cn(
-              "rounded-full px-2 py-1 text-xs",
-              difficulty === "easy" &&
-                "bg-green-100 text-green-800 dark:bg-green-600/20 dark:text-green-200",
-              difficulty === "medium" &&
-                "bg-yellow-100 text-yellow-800 dark:bg-yellow-600/20 dark:text-yellow-200",
-              difficulty === "hard" &&
-                "bg-red-100 text-red-800 dark:bg-red-600/20 dark:text-red-200"
-            )}
-          >
-            {difficulty}
-          </span>
-        </CardTitle>
-        <CardDescription className="text-pretty">
-          {currentQuestion.text}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="mb-4 flex items-center justify-between">
-          <Countdown seconds={remaining} warnAt={10} />
-          <div className="flex items-center gap-2">
-            <Button
-              variant={speakEnabled ? "default" : "secondary"}
-              onClick={() => {
-                setSpeakEnabled((v) => !v);
-                if (speakEnabled) {
-                  try {
-                    window.speechSynthesis.cancel();
-                  } catch {}
-                }
-              }}
-            >
-              {speakEnabled ? "Speaking On" : "Speak Question"}
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                try {
-                  window.speechSynthesis.cancel();
-                } catch {}
-              }}
-            >
-              Stop Speaking
-            </Button>
-
-            <Button
-              variant="secondary"
-              onClick={() => alert("Hint: " + (hint || "No hint available"))}
-            >
-              Hint
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => alert("Marking for review…")}
-            >
-              Mark for review
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => alert("Requesting extra time…")}
-            >
-              Extra time
-            </Button>
-          </div>
-        </div>
-        <AnswerInput
-          onSubmit={async (text) => {
-            await submitAnswer(session.id, text, false);
-          }}
-        />
-      </CardContent>
-    </Card>
-  );
-}
-
-function AnswerInput({
-  onSubmit,
-}: {
-  onSubmit: (text: string) => Promise<void>;
-}) {
-  const [text, setText] = useState("");
+  // === Recording + transcription ===
   const [isRecording, setIsRecording] = useState(false);
-  const [isSupported, setIsSupported] = useState(false);
+  const [transcript, setTranscript] = useState("");
   const recognitionRef = useRef<any>(null);
 
-  useEffect(() => {
-    const SpeechRecognition =
-      (typeof window !== "undefined" && (window as any).SpeechRecognition) ||
-      (typeof window !== "undefined" &&
-        (window as any).webkitSpeechRecognition);
-    setIsSupported(!!SpeechRecognition);
-  }, []);
+  const [speechSupported, setSpeechSupported] = useState(false);
 
-  function startRecording() {
-    const SpeechRecognition =
+  useEffect(() => {
+    const SR =
       (window as any).SpeechRecognition ||
       (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      toast.error("Speech recognition is not supported in this browser.");
-      return;
-    }
+    setSpeechSupported(!!SR);
+  }, []);
+
+  async function startRecording() {
     try {
-      const recog = new SpeechRecognition();
-      recog.lang = "en-US";
-      recog.continuous = true;
-      recog.interimResults = true;
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const SR =
+        (window as any).SpeechRecognition ||
+        (window as any).webkitSpeechRecognition;
 
-      recog.onstart = () => {
-        setIsRecording(true);
-        toast.message("Listening… Speak your answer.");
-      };
-      recog.onresult = (e: any) => {
-        let finalTranscript = "";
-        for (let i = e.resultIndex; i < e.results.length; i++) {
-          const transcript = e.results[i][0].transcript;
-          if (e.results[i].isFinal) {
-            finalTranscript += transcript + " ";
-          } else {
-            setText((prev) => {
-              return transcript.length > prev.length ? transcript : prev;
-            });
+      if (SR) {
+        const recog = new SR();
+        recog.lang = "en-US";
+        recog.continuous = true;
+        recog.interimResults = true;
+
+        recog.onstart = () => setIsRecording(true);
+
+        recog.onresult = (e: any) => {
+          let interim = "";
+          let final = "";
+
+          for (let i = e.resultIndex; i < e.results.length; i++) {
+            const piece = e.results[i][0].transcript;
+            if (e.results[i].isFinal) {
+              final += piece + " ";
+            } else {
+              interim += piece;
+            }
           }
-        }
-        if (finalTranscript.trim()) {
-          setText((prev) =>
-            prev.trim()
-              ? prev + " " + finalTranscript.trim()
-              : finalTranscript.trim()
-          );
-        }
-      };
-      recog.onerror = (err: any) => {
-        console.log("[v0] SpeechRecognition error:", err);
-        toast.error(
-          "Microphone error. Please check permissions and try again."
-        );
-        setIsRecording(false);
-      };
-      recog.onend = () => {
-        setIsRecording(false);
-      };
 
-      recognitionRef.current = recog;
-      recog.start();
+          setTranscript((prev) => {
+            const base = prev.trim();
+            return base
+              ? `${base} ${final}${interim}`.trim()
+              : `${final}${interim}`.trim();
+          });
+        };
+
+        recog.onerror = () =>
+          toast.error("Microphone error. Please check permissions.");
+        recog.onend = () => setIsRecording(false);
+
+        recognitionRef.current = recog;
+        recog.start();
+      } else {
+        setIsRecording(true);
+        toast.message(
+          "Recording audio. Browser will not transcribe automatically."
+        );
+      }
     } catch (e) {
-      console.log("[v0] Failed to start SpeechRecognition:", e);
-      toast.error("Unable to start recording.");
+      toast.error("Unable to access microphone.");
     }
   }
 
   function stopRecording() {
     try {
-      recognitionRef.current?.stop();
+      recognitionRef.current?.stop?.();
+      setIsRecording(false);
     } catch {}
   }
 
-  return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          className="bg-primary text-primary-foreground"
-          onClick={() => (isRecording ? stopRecording() : startRecording())}
-        >
-          {isRecording ? "Stop Recording" : "Start Recording"}
-        </Button>
-        {!isSupported && (
-          <span className="text-sm text-muted-foreground">
-            Browser doesn&apos;t support speech recognition. Please type your
-            answer.
-          </span>
-        )}
-        <div className="ml-auto text-sm text-muted-foreground">
-          You can edit before submitting
-        </div>
-      </div>
+  if (!session || !currentQuestion) {
+    return (
+      <main className="mx-auto max-w-3xl p-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>Interview</CardTitle>
+            <CardDescription>
+              Start the interview to receive your question.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </main>
+    );
+  }
 
-      <Textarea
-        rows={6}
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        placeholder="Speak or type your answer… Press Ctrl/Cmd+Enter to submit"
-        onKeyDown={(e) => {
-          if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-            onSubmit(text).then(() => setText(""));
-          }
-        }}
-      />
-      <div className="flex justify-end gap-2">
-        <Button variant="secondary" onClick={() => setText("")}>
-          Clear
-        </Button>
-        <Button
-          className="bg-primary text-primary-foreground"
-          onClick={() => onSubmit(text).then(() => setText(""))}
-        >
-          Submit
-        </Button>
-      </div>
-    </div>
+  return (
+    <main className="mx-auto max-w-3xl p-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <span>Question {currentQuestion.index + 1} / 6</span>
+            <Countdown seconds={remaining} warnAt={10} />
+          </CardTitle>
+          <CardDescription className="text-pretty">
+            {currentQuestion.text}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-3">
+            <Button
+              variant={autoSpeak ? "default" : "secondary"}
+              onClick={() => setAutoSpeak((v) => !v)}
+            >
+              {autoSpeak ? "Speaking On" : "Speak Question"}
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setAutoSpeak(false);
+              }}
+            >
+              Stop Speaking
+            </Button>
+          </div>
+
+          {/* Recorder + transcript */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              className="bg-primary text-primary-foreground"
+              onClick={() => (isRecording ? stopRecording() : startRecording())}
+            >
+              {isRecording ? "Stop Recording" : "Start Recording"}
+            </Button>
+            {!speechSupported && (
+              <span className="text-sm text-muted-foreground">
+                Browser won&apos;t transcribe automatically.
+              </span>
+            )}
+            <div className="ml-auto text-sm text-muted-foreground">
+              Edit before submitting
+            </div>
+          </div>
+
+          <Textarea
+            rows={6}
+            value={transcript}
+            onChange={(e) => setTranscript(e.target.value)}
+            placeholder="Speak your answer, then edit if needed. Press Ctrl/Cmd+Enter to submit."
+            onKeyDown={(e) => {
+              if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                submitAnswer(session.id, transcript, false).then(() =>
+                  setTranscript("")
+                );
+              }
+            }}
+          />
+
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setTranscript("")}>
+              Clear
+            </Button>
+            <Button
+              className="bg-primary text-primary-foreground"
+              onClick={() =>
+                submitAnswer(session.id, transcript, false).then(() =>
+                  setTranscript("")
+                )
+              }
+            >
+              Submit
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </main>
   );
 }
 
@@ -525,9 +559,8 @@ function ChatTimeline() {
   const session = useInterviewStore((s) =>
     currentSessionId ? s.sessions[currentSessionId] : undefined
   );
-  
-const getChatTimeline = useInterviewStore((s) => s.getChatTimeline)
-const chat = currentSessionId ? getChatTimeline(currentSessionId) : []
+  const getChatTimeline = useInterviewStore((s) => s.getChatTimeline);
+  const chat = currentSessionId ? getChatTimeline(currentSessionId) : [];
 
   if (!session) {
     return (
@@ -607,45 +640,17 @@ const chat = currentSessionId ? getChatTimeline(currentSessionId) : []
   );
 }
 
-export default function IntervieweePage() {
-  const boot = useInterviewStore((s) => s.bootIfNeeded);
-
-  useEffect(() => {
-    boot();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [boot]);
-
-  const currentSessionId = useInterviewStore((s) => s.currentSessionId);
-  const session = useInterviewStore((s) =>
-    currentSessionId ? s.sessions[currentSessionId] : undefined
-  );
-
+function QuestionCard() {
+  // Placeholder for QuestionCard component
   return (
-    <main className="mx-auto max-w-6xl p-4">
-      {session && <PrivacyConsent candidateId={session.candidateId} />}
-      <div className="grid gap-4 md:grid-cols-12">
-        <div className="md:col-span-3 space-y-4">
-          <ResumeCard />
-          <Card>
-            <CardHeader>
-              <CardTitle>Controls</CardTitle>
-              <CardDescription>Manage session state</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-wrap gap-2">
-              <PauseAndEnd />
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="md:col-span-6">
-          <ChatTimeline />
-        </div>
-
-        <div className="md:col-span-3">
-          <QuestionCard />
-        </div>
-      </div>
-    </main>
+    <Card>
+      <CardHeader>
+        <CardTitle>Next Question</CardTitle>
+        <CardDescription>
+          Details about the next question will appear here.
+        </CardDescription>
+      </CardHeader>
+    </Card>
   );
 }
 
@@ -669,5 +674,56 @@ function PauseAndEnd() {
         End Interview
       </Button>
     </>
+  );
+}
+
+export default function IntervieweePage() {
+  const boot = useInterviewStore((s) => s.bootIfNeeded);
+
+  useEffect(() => {
+    boot();
+  }, [boot]);
+
+  const currentSessionId = useInterviewStore((s) => s.currentSessionId);
+  const session = useInterviewStore((s) =>
+    currentSessionId ? s.sessions[currentSessionId] : undefined
+  );
+  const inProgress = !!session?.status && session.status === "in-progress";
+
+  if (inProgress) {
+    return (
+      <main className="min-h-dvh p-4">
+        {session && <PrivacyConsent candidateId={session.candidateId} />}
+        <InterviewStage />
+      </main>
+    );
+  }
+
+  return (
+    <main className="mx-auto max-w-6xl p-4">
+      {session && <PrivacyConsent candidateId={session.candidateId} />}
+      <div className="grid gap-4 md:grid-cols-12">
+        <div className="space-y-4 md:col-span-4 lg:col-span-3">
+          <ResumeCard />
+          <Card>
+            <CardHeader>
+              <CardTitle>Controls</CardTitle>
+              <CardDescription>Manage session state</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-wrap gap-2">
+              <PauseAndEnd />
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="md:col-span-8 lg:col-span-6">
+          <ChatTimeline />
+        </div>
+
+        <div className="md:col-span-4 lg:col-span-3">
+          <QuestionCard />
+        </div>
+      </div>
+    </main>
   );
 }
