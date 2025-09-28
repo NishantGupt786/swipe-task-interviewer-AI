@@ -1,20 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState, useMemo } from "react";
 import { useInterviewStore } from "@/lib/state";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowDownUp, Trash2 } from "lucide-react";
-import { cn } from "@/lib/utils";
-
-type SortKey = "score" | "last" | "name";
 
 export default function InterviewerPage() {
   const candidates = useInterviewStore((s) => s.candidates);
@@ -22,162 +20,172 @@ export default function InterviewerPage() {
   const reEvaluate = useInterviewStore((s) => s.reEvaluateSession);
   const deleteSession = useInterviewStore((s) => s.deleteSession);
 
-  const [selected, setSelected] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
-  const [sortBy, setSortBy] = useState<SortKey>("score");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const rows = useMemo(() => {
-    const list = Object.values(sessions).map((sess) => {
+    return Object.values(sessions).map((sess) => {
       const cand = candidates[sess.candidateId];
-      const finalEval = sess.evaluations.length
-        ? sess.evaluations.reduce((acc, e) => acc + e.score, 0) /
-          sess.evaluations.length
-        : 0;
+      const avg =
+        sess.evaluations.length > 0
+          ? sess.evaluations.reduce((a, e) => a + e.score, 0) /
+            sess.evaluations.length
+          : 0;
       return {
         id: sess.id,
         name: cand?.name || "Unnamed",
         email: cand?.email || "",
-        score: Math.round((finalEval / 10) * 100),
+        phone: cand?.phone || "",
         status: sess.status,
+        score: avg.toFixed(1),
         progress: `${sess.currentQuestionIndex}/6`,
-        last: new Date(sess.updatedAt).getTime(),
       };
     });
+  }, [candidates, sessions]);
 
-    const filtered = list.filter(
-      (r) =>
-        r.name.toLowerCase().includes(query.toLowerCase()) ||
-        r.email.toLowerCase().includes(query.toLowerCase())
-    );
-
-    const sorted = [...filtered].sort((a, b) => {
-      if (sortBy === "score") return b.score - a.score;
-      if (sortBy === "last") return b.last - a.last;
-      return a.name.localeCompare(b.name);
-    });
-
-    return sorted;
-  }, [sessions, candidates, query, sortBy]);
-
-  const selectedSession = selected ? sessions[selected] : null;
+  const selectedSession = selectedId ? sessions[selectedId] : null;
   const selectedCand = selectedSession
     ? candidates[selectedSession.candidateId]
     : null;
 
   return (
-    <main className="mx-auto max-w-6xl p-4">
-      <div className="grid gap-4 md:grid-cols-12">
-        <div className="md:col-span-7">
-          <Card>
-            <CardHeader className="flex items-center justify-between gap-2">
-              <div>
-                <CardTitle>Candidates</CardTitle>
-                <CardDescription>
-                  Search, sort, and review candidates
-                </CardDescription>
-              </div>
-              <div className="flex items-center gap-2">
-                <Input
-                  placeholder="Search name or email…"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                />
-                <Button
-                  variant="secondary"
-                  onClick={() =>
-                    setSortBy((prev) =>
-                      prev === "score"
-                        ? "last"
-                        : prev === "last"
-                        ? "name"
-                        : "score"
-                    )
-                  }
-                  aria-label="Toggle sort"
+    <main className="mx-auto max-w-7xl p-4 grid gap-6 md:grid-cols-12">
+      <Card className="md:col-span-7">
+        <CardHeader>
+          <CardTitle>Candidates</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableCaption>A list of all interview sessions</TableCaption>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Score</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Progress</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row) => (
+                <TableRow
+                  key={row.id}
+                  className="cursor-pointer hover:bg-accent"
+                  onClick={() => setSelectedId(row.id)}
                 >
-                  <ArrowDownUp className="size-4" />
+                  <TableCell>{row.name}</TableCell>
+                  <TableCell>{row.email}</TableCell>
+                  <TableCell>{row.score}</TableCell>
+                  <TableCell>{row.status}</TableCell>
+                  <TableCell>{row.progress}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Card className="md:col-span-5">
+        <CardHeader>
+          <CardTitle>Candidate Report</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {!selectedSession && (
+            <div>Select a candidate to view their report</div>
+          )}
+          {selectedSession && selectedCand && (
+            <>
+              <div>
+                <div className="font-medium">{selectedCand.name}</div>
+                <div className="text-sm text-muted-foreground">
+                  {selectedCand.email}
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  {selectedCand.phone}
+                </div>
+              </div>
+              <div>
+                <div className="text-sm font-medium">Overall Score</div>
+                <div className="text-2xl font-bold">
+                  {(
+                    selectedSession.evaluations.reduce(
+                      (a, e) => a + e.score,
+                      0
+                    ) / (selectedSession.evaluations.length || 1)
+                  ).toFixed(1)}{" "}
+                  / 10
+                </div>
+                {selectedSession.finalReport && (
+                  <div className="space-y-2">
+                    <div className="text-lg font-bold">
+                      Final Score: {selectedSession.finalReport.finalScore} /
+                      100
+                    </div>
+                    <div className="text-sm">
+                      {selectedSession.finalReport.summary}
+                    </div>
+                    <div className="font-medium">
+                      Recommendation:{" "}
+                      {selectedSession.finalReport.recommendation}
+                    </div>
+                    <div className="space-y-1">
+                      {selectedSession.finalReport.perQuestionScores.map(
+                        (p) => {
+                          const q = selectedSession.questionSequence.find(
+                            (q) => q.id === p.questionId
+                          );
+                          return (
+                            <div key={p.questionId} className="text-sm">
+                              {q?.text} → {p.score}
+                            </div>
+                          );
+                        }
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="space-y-2">
+                {selectedSession.answers.map((ans) => {
+                  const ev = selectedSession.evaluations.find(
+                    (e) => e.answerId === ans.id
+                  );
+                  const q = selectedSession.questionSequence.find(
+                    (q) => q.id === ans.questionId
+                  );
+                  return (
+                    <div key={ans.id} className="rounded border p-2">
+                      <div className="font-medium">Q: {q?.text}</div>
+                      <div className="text-sm text-muted-foreground">
+                        A: {ans.text}
+                      </div>
+                      {ev && (
+                        <div className="mt-1 text-sm">
+                          <span className="font-medium">Score:</span> {ev.score}{" "}
+                          / 10
+                          <br />
+                          <span className="font-medium">Feedback:</span>{" "}
+                          {ev.feedback}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex gap-2 pt-3">
+                <Button onClick={() => reEvaluate(selectedSession.id)}>
+                  Re-evaluate
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={() => deleteSession(selectedSession.id)}
+                >
+                  Delete
                 </Button>
               </div>
-            </CardHeader>
-            <CardContent className="divide-y divide-border">
-              <div className="grid grid-cols-6 px-2 pb-2 text-xs text-muted-foreground">
-                <div className="col-span-2">Name</div>
-                <div>Email</div>
-                <div>Score</div>
-                <div>Status</div>
-                <div>Progress</div>
-              </div>
-              {rows.map((r) => (
-                <button
-                  key={r.id}
-                  onClick={() => setSelected(r.id)}
-                  className={cn(
-                    "grid w-full grid-cols-6 items-center gap-2 px-2 py-3 text-left hover:bg-accent",
-                    selected === r.id && "bg-accent"
-                  )}
-                >
-                  <div className="col-span-2 truncate font-medium">
-                    {r.name}
-                  </div>
-                  <div className="truncate text-sm text-muted-foreground">
-                    {r.email}
-                  </div>
-                  <div>{r.score}</div>
-                  <div className="text-sm">{r.status}</div>
-                  <div className="text-sm">{r.progress}</div>
-                </button>
-              ))}
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="md:col-span-5">
-          <Card>
-            <CardHeader>
-              <CardTitle>Candidate Details</CardTitle>
-              <CardDescription>Overview and actions</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {!selectedSession && (
-                <div className="text-sm text-muted-foreground">
-                  Select a candidate session from the list.
-                </div>
-              )}
-              {selectedSession && selectedCand && (
-                <>
-                  <div className="grid gap-1">
-                    <div className="text-sm text-muted-foreground">Name</div>
-                    <div className="font-medium">{selectedCand.name}</div>
-                  </div>
-                  <div className="grid gap-1">
-                    <div className="text-sm text-muted-foreground">Email</div>
-                    <div className="font-medium">{selectedCand.email}</div>
-                  </div>
-                  <div className="grid gap-1">
-                    <div className="text-sm text-muted-foreground">Phone</div>
-                    <div className="font-medium">{selectedCand.phone}</div>
-                  </div>
-                  <div className="flex items-center gap-2 pt-2">
-                    <Button
-                      className="bg-primary text-primary-foreground"
-                      onClick={() => reEvaluate(selectedSession.id)}
-                    >
-                      Re-evaluate
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      onClick={() => deleteSession(selectedSession.id)}
-                    >
-                      <Trash2 className="mr-2 size-4" />
-                      Delete session
-                    </Button>
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
     </main>
   );
 }

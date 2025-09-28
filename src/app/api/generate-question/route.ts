@@ -4,6 +4,7 @@ import { callGemini } from "@/lib/gemini"
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}))
   const { candidateProfile, difficulty, previousQuestions } = body || {}
+
   const prompt = `You are an interviewer assistant tasked with generating a single unique question for a React + Node full-stack role.
 
 Rules:
@@ -19,15 +20,21 @@ Context:
 
 Return only the JSON object.`
 
-
   try {
-    const raw = await callGemini({ model: process.env.GEMINI_MODEL, prompt, max_output_tokens: 400 })
-    const asText = JSON.stringify(raw)
-    const jsonMatch = asText.match(/\{[\s\S]*\}/)
+    const rawText = await callGemini({
+      model: process.env.GEMINI_MODEL,
+      prompt,
+      max_output_tokens: 20480,
+    })
+
+    console.log("Gemini raw text:", rawText)
+
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/)
     const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null
+
     return NextResponse.json({ question: parsed })
-  } catch {
-    // Provide a mocked question in preview
+  } catch (err) {
+    console.error("Gemini error:", err)
     return NextResponse.json({
       question: {
         id: `q_${Math.random().toString(36).slice(2)}`,

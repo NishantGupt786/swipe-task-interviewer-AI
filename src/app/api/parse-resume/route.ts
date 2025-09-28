@@ -17,7 +17,7 @@ Resume text:
 \`\`\`${resumeText}\`\`\``
 
   try {
-    const payload = { model: process.env.GEMINI_MODEL, prompt, max_output_tokens: 512 }
+    const payload = { model: process.env.GEMINI_MODEL, prompt, max_output_tokens: 20480 }
     const geminiRaw = await callGemini(payload)
     const asText = JSON.stringify(geminiRaw)
     const jsonMatch = asText.match(/\{[\s\S]*\}/)

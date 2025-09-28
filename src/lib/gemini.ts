@@ -1,43 +1,39 @@
-import { GoogleGenAI } from "@google/genai"
+import { GoogleGenerativeAI } from "@google/generative-ai"
 
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-})
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "")
 
 type GeminiPayload = {
   model?: string
-  prompt?: string
+  prompt: string
   max_output_tokens?: number
-  // Optional passthrough for advanced config in case we need it later
-  config?: {
-    thinkingConfig?: {
-      thinkingBudget?: number
-    }
-    // You can extend this as needed
-    [k: string]: any
-  }
 }
 
-export async function callGemini(payload: GeminiPayload) {
-  const model = payload?.model || process.env.GEMINI_MODEL || "gemini-2.5-flash"
-  const prompt = payload?.prompt || ""
+export async function callGemini({ model, prompt, max_output_tokens }: GeminiPayload) {
+  const useModel = model || process.env.GEMINI_MODEL || "gemini-2.5-flash"
 
   if (!process.env.GEMINI_API_KEY) {
-    return { mock: true, payload }
+    throw new Error("Missing GEMINI_API_KEY")
   }
 
-  const response = await ai.models.generateContent({
-    model,
-    contents: prompt,
-    // Provide a minimal default config aligned with your sample
-    config: {
-      thinkingConfig: { thinkingBudget: 0 },
-      ...(payload?.config || {}),
-      // Note: if you want to enforce output token limits with this SDK,
-      // add the appropriate generation config here when needed.
+  const geminiModel = genAI.getGenerativeModel({
+    model: useModel,
+    generationConfig: {
+      maxOutputTokens: max_output_tokens || 2048,
     },
   })
 
-  const text = (response as any)?.text ?? JSON.stringify(response)
+  const result = await geminiModel.generateContent(prompt)
+  console.log("Gemini result:", JSON.stringify(result))
+
+  // Try text first
+  let text = result.response.text()
+
+  // Fallback: candidates -> parts
+  if (!text || !text.trim()) {
+    const parts = result.response.candidates?.[0]?.content?.parts
+    text = parts?.map((p: any) => p.text).join("\n") || ""
+    console.log("Gemini parts:", text)
+  }
+
   return text
 }

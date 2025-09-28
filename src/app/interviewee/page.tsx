@@ -334,7 +334,6 @@ function ResumeCard() {
     </Card>
   );
 }
-
 function InterviewStage() {
   const currentSessionId = useInterviewStore((s) => s.currentSessionId);
   const session = useInterviewStore((s) =>
@@ -382,10 +381,16 @@ function InterviewStage() {
     }
   }, [currentQuestion, autoSpeak]);
 
-  // === Recording + transcription ===
+  // === Recording + transcription + volume meter ===
   const [isRecording, setIsRecording] = useState(false);
-  const [transcript, setTranscript] = useState("");
+  const [finalTranscript, setFinalTranscript] = useState("");
+  const [interimTranscript, setInterimTranscript] = useState("");
+  const [volume, setVolume] = useState(0);
+
   const recognitionRef = useRef<any>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const rafRef = useRef<number>();
 
   const [speechSupported, setSpeechSupported] = useState(false);
 
@@ -399,6 +404,32 @@ function InterviewStage() {
   async function startRecording() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      // === Setup volume analyser ===
+      audioContextRef.current = new AudioContext();
+      const source = audioContextRef.current.createMediaStreamSource(stream);
+      analyserRef.current = audioContextRef.current.createAnalyser();
+      analyserRef.current.fftSize = 256;
+      source.connect(analyserRef.current);
+
+      const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+
+      function tick() {
+        if (analyserRef.current) {
+          analyserRef.current.getByteTimeDomainData(dataArray);
+          let sum = 0;
+          for (let i = 0; i < dataArray.length; i++) {
+            const v = dataArray[i] - 128;
+            sum += v * v;
+          }
+          const rms = Math.sqrt(sum / dataArray.length);
+          setVolume(Math.min(rms / 50, 1)); // normalize 0–1
+        }
+        rafRef.current = requestAnimationFrame(tick);
+      }
+      tick();
+
+      // === Setup SpeechRecognition ===
       const SR =
         (window as any).SpeechRecognition ||
         (window as any).webkitSpeechRecognition;
@@ -424,12 +455,12 @@ function InterviewStage() {
             }
           }
 
-          setTranscript((prev) => {
-            const base = prev.trim();
-            return base
-              ? `${base} ${final}${interim}`.trim()
-              : `${final}${interim}`.trim();
-          });
+          if (final) {
+            setFinalTranscript((prev) => prev + final);
+            setInterimTranscript("");
+          } else {
+            setInterimTranscript(interim);
+          }
         };
 
         recog.onerror = () =>
@@ -453,6 +484,13 @@ function InterviewStage() {
     try {
       recognitionRef.current?.stop?.();
       setIsRecording(false);
+
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+        audioContextRef.current = null;
+      }
+      setVolume(0);
     } catch {}
   }
 
@@ -470,6 +508,8 @@ function InterviewStage() {
       </main>
     );
   }
+
+  const transcript = (finalTranscript + interimTranscript).trim();
 
   return (
     <main className="mx-auto max-w-3xl p-4">
@@ -491,18 +531,13 @@ function InterviewStage() {
             >
               {autoSpeak ? "Speaking On" : "Speak Question"}
             </Button>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setAutoSpeak(false);
-              }}
-            >
+            <Button variant="secondary" onClick={() => setAutoSpeak(false)}>
               Stop Speaking
             </Button>
           </div>
 
-          {/* Recorder + transcript */}
-          <div className="flex flex-wrap items-center gap-2">
+          {/* Recorder + transcript + volume meter */}
+          <div className="flex flex-wrap items-center gap-2 w-full">
             <Button
               className="bg-primary text-primary-foreground"
               onClick={() => (isRecording ? stopRecording() : startRecording())}
@@ -519,30 +554,48 @@ function InterviewStage() {
             </div>
           </div>
 
+          {/* Volume meter */}
+          {isRecording && (
+            <div className="w-full h-3 bg-muted rounded">
+              <div
+                className="h-3 rounded bg-green-500 transition-all"
+                style={{ width: `${volume * 100}%` }}
+              />
+            </div>
+          )}
+
           <Textarea
             rows={6}
             value={transcript}
-            onChange={(e) => setTranscript(e.target.value)}
+            onChange={(e) => setFinalTranscript(e.target.value)}
             placeholder="Speak your answer, then edit if needed. Press Ctrl/Cmd+Enter to submit."
             onKeyDown={(e) => {
               if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-                submitAnswer(session.id, transcript, false).then(() =>
-                  setTranscript("")
-                );
+                submitAnswer(session.id, transcript, false).then(() => {
+                  setFinalTranscript("");
+                  setInterimTranscript("");
+                });
               }
             }}
           />
 
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setTranscript("")}>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setFinalTranscript("");
+                setInterimTranscript("");
+              }}
+            >
               Clear
             </Button>
             <Button
               className="bg-primary text-primary-foreground"
               onClick={() =>
-                submitAnswer(session.id, transcript, false).then(() =>
-                  setTranscript("")
-                )
+                submitAnswer(session.id, transcript, false).then(() => {
+                  setFinalTranscript("");
+                  setInterimTranscript("");
+                })
               }
             >
               Submit
@@ -553,7 +606,6 @@ function InterviewStage() {
     </main>
   );
 }
-
 function ChatTimeline() {
   const currentSessionId = useInterviewStore((s) => s.currentSessionId);
   const session = useInterviewStore((s) =>
@@ -592,7 +644,7 @@ function ChatTimeline() {
                   {new Date(item.timestamp).toLocaleTimeString()}
                 </div>
                 <div className="font-medium">{item.text}</div>
-                <div className="text-xs opacity-80">
+                <div className="text-xs opacity-80 pt-2">
                   Difficulty: {item.difficulty}
                 </div>
               </div>
@@ -621,7 +673,7 @@ function ChatTimeline() {
             return (
               <div
                 key={item.id}
-                className="rounded-md bg-green-100 p-3 dark:bg-green-900/20"
+                className="rounded-md p-3 bg-green-900/20"
               >
                 <div className="text-sm text-muted-foreground">
                   Evaluated {new Date(item.evaluatedAt).toLocaleTimeString()}
@@ -636,20 +688,6 @@ function ChatTimeline() {
           return null;
         })}
       </CardContent>
-    </Card>
-  );
-}
-
-function QuestionCard() {
-  // Placeholder for QuestionCard component
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Next Question</CardTitle>
-        <CardDescription>
-          Details about the next question will appear here.
-        </CardDescription>
-      </CardHeader>
     </Card>
   );
 }
@@ -700,10 +738,10 @@ export default function IntervieweePage() {
   }
 
   return (
-    <main className="mx-auto max-w-6xl p-4">
+    <main className="mx-auto max-w-7xl p-4">
       {session && <PrivacyConsent candidateId={session.candidateId} />}
       <div className="grid gap-4 md:grid-cols-12">
-        <div className="space-y-4 md:col-span-4 lg:col-span-3">
+        <div className="space-y-4 md:col-span-4 lg:col-span-4">
           <ResumeCard />
           <Card>
             <CardHeader>
@@ -716,14 +754,11 @@ export default function IntervieweePage() {
           </Card>
         </div>
 
-        <div className="md:col-span-8 lg:col-span-6">
+        <div className="md:col-span-8 lg:col-span-8">
           <ChatTimeline />
         </div>
-
-        <div className="md:col-span-4 lg:col-span-3">
-          <QuestionCard />
-        </div>
       </div>
+      
     </main>
   );
 }

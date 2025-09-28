@@ -52,10 +52,18 @@ export interface Session {
   extraTimeTokens: number
   createdAt: string
   updatedAt: string
+  finalReport?: FinalReport
 }
 
 export interface AppState {
   ui: { selectedTab: "interviewee" | "interviewer" }
   candidates: Record<string, CandidateProfile>
   sessions: Record<string, Session>
+}
+
+export interface FinalReport {
+  finalScore: number
+  summary: string
+  recommendation: "Hire" | "Consider" | "Reject"
+  perQuestionScores: { questionId: string; score: number }[]
 }

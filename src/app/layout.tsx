@@ -9,9 +9,8 @@ import { Suspense } from "react"
 import { Toaster } from "sonner"
 
 export const metadata: Metadata = {
-  title: "v0 App",
-  description: "Created with v0",
-  generator: "v0.app",
+  title: "Swipe Task - AI Interviewer",
+  description: "AI-powered technical interview platform",
 }
 
 export default function RootLayout({

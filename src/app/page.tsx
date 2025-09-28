@@ -97,7 +97,7 @@ function WelcomeBackModal() {
 
 export default function Page() {
   return (
-    <main className="mx-auto max-w-5xl p-6">
+    <main className="mx-auto my-16 max-w-5xl p-6">
       <section className="flex flex-col items-center gap-6 text-center">
         <h1 className="text-balance text-4xl font-semibold">Swipe Internship — AI Interview Assistant</h1>
         <p className="max-w-2xl text-pretty text-muted-foreground">

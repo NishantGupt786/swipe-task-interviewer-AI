@@ -9,7 +9,7 @@ export async function POST(req: Request) {
 Session data: ${JSON.stringify(session)}`
 
   try {
-    const raw = await callGemini({ model: process.env.GEMINI_MODEL, prompt, max_output_tokens: 800 })
+    const raw = await callGemini({ model: process.env.GEMINI_MODEL, prompt, max_output_tokens: 20480 })
     const asText = JSON.stringify(raw)
     const jsonMatch = asText.match(/\{[\s\S]*\}/)
     const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null
