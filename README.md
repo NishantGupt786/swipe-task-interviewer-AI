@@ -1,36 +1,118 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🚀 Swipe Internship — AI Interview Assistant
 
-## Getting Started
+An **AI-powered technical interview platform** that simulates structured candidate interviews with **resume parsing, timed Q&A, speech-to-text input, AI evaluation, and interviewer dashboards**.
 
-First, run the development server:
+---
+
+## 📌 Features
+
+* 📄 **Resume Parsing**
+
+  * Upload PDF/DOCX/TXT files → Extracts candidate details.
+  * Local heuristic parsing with optional Gemini AI enhancement.
+
+* 🎤 **Candidate Experience**
+
+  * Six **timed** technical questions (20s / 60s / 120s).
+  * Auto-submit answers when timer runs out.
+  * Speech-to-text transcription with **live volume meter**.
+  * Text-to-Speech for questions (Google Cloud TTS).
+  * Editable transcript + manual submit.
+
+* 🤖 **AI Question Generation & Evaluation**
+
+  * Dynamic question generation with **Gemini API**.
+  * Automated answer evaluation (score + rubric + feedback).
+  * Final interview report (score, summary, recommendation).
+
+* 🧑‍💻 **Interviewer Dashboard**
+
+  * Search candidates by name/email.
+  * Review chat timeline: questions, answers, evaluations.
+  * Export full candidate report as **PDF**.
+  * Re-evaluate sessions if needed.
+
+* 💾 **Persistence**
+
+  * Sessions and candidates stored in IndexedDB (client-side).
+  * Resume where you left off with session chooser modal.
+
+---
+
+## 🛠️ Tech Stack
+
+| Technology                             | Purpose                                                           |
+| -------------------------------------- | ----------------------------------------------------------------- |
+| **Next.js (App Router)**               | Core framework for UI + API routes.                               |
+| **React + Zustand**                    | State management for sessions, candidates, and timers.            |
+| **Tailwind CSS + shadcn/ui**           | UI components, styling, theming.                                  |
+| **Lucide Icons**                       | Modern, consistent icons (mic, volume, stop, etc.).               |
+| **Google Cloud Text-to-Speech**        | Question audio playback (MP3 synthesis).                          |
+| **Google Gemini API**                  | Question generation, evaluation, and final session summarization. |
+| **pdf-parse**                          | Resume PDF text extraction.                                       |
+| **IndexedDB (via Zustand middleware)** | Local session persistence across refreshes.                       |
+| **Sonner**                             | Toast notifications for feedback/errors.                          |
+| **date-fns**                           | Date formatting (e.g. "3 minutes ago").                           |
+| **jspdf**                             | Candidate report export as **PDF**.                               |
+
+---
+
+## ⚙️ Setup Instructions
+
+### 1. Clone the repo
 
 ```bash
+git clone https://github.com/yourusername/swipe-interview.git
+cd swipe-interview
+```
+
+### 2. Install dependencies
+
+```bash
+pnpm install
+# or
+npm install
+# or
+yarn install
+```
+
+### 3. Configure environment variables
+
+Create a `.env.local` file (see `.env.example` below):
+
+```bash
+# ==== Google Cloud TTS (Service Account JSON) ====
+# Paste the entire JSON string as one line, with escaped \n in private_key
+GCP_KEY_JSON='{"type":"service_account","project_id":"...","private_key_id":"...","private_key":"-----BEGIN PRIVATE KEY-----\nABC...\n-----END PRIVATE KEY-----\n","client_email":"...","client_id":"...","auth_uri":"...","token_uri":"...","auth_provider_x509_cert_url":"...","client_x509_cert_url":"..."}'
+
+# ==== Gemini AI ====
+GEMINI_API_KEY=your_gemini_api_key
+GEMINI_MODEL=gemini-2.5-flash
+
+# ==== SMTP CONFIG ====
+SMTP_USER=youremail@gmail.com
+SMTP_PASS=your app password
+```
+
+### 4. Run locally
+
+```bash
+pnpm dev
+# or
 npm run dev
 # or
 yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The app will be available at **[http://localhost:3000](http://localhost:3000)**.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-## Learn More
+## ✅ Future Enhancements
 
-To learn more about Next.js, take a look at the following resources:
+* Multi-language support (both questions + TTS).
+* Support for more resume formats (LinkedIn, plain HTML).
+* Advanced interviewer analytics (per-skill radar charts).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+---

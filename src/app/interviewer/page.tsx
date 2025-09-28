@@ -2,6 +2,7 @@
 
 import type React from "react";
 import { toast } from "sonner";
+import jsPDF from "jspdf";
 
 import { useMemo, useState } from "react";
 import { useInterviewStore } from "@/lib/state";
@@ -78,6 +79,133 @@ export default function InterviewerPage() {
           ) / selectedSession.evaluations.length
         ).toFixed(1)
       : "—";
+
+  // PDF generation handler with robust toasts
+  async function handleDownloadPdf() {
+    if (!selectedSession || !selectedCand) {
+      toast.error("No session selected.");
+      return;
+    }
+
+    try {
+      toast.message("Generating PDF report...");
+
+      const doc = new jsPDF({ unit: "pt", format: "letter" });
+      const margin = 40;
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const contentWidth = pageWidth - margin * 2;
+      const line = 18;
+      let y = margin;
+
+      const ensureSpace = (extra = 0) => {
+        if (y > pageHeight - margin - extra) {
+          doc.addPage();
+          y = margin;
+        }
+      };
+
+      const textBlock = (txt: string, size = 11, bold = false) => {
+        ensureSpace();
+        doc.setFontSize(size);
+        doc.setFont("helvetica", bold ? "bold" : "normal");
+        const lines = doc.splitTextToSize(txt, contentWidth);
+        lines.forEach((ln: string) => {
+          ensureSpace();
+          doc.text(ln, margin, y);
+          y += line;
+        });
+      };
+
+      // Header
+      doc.setFontSize(18);
+      doc.setFont("helvetica", "bold");
+      doc.text("Interview Session Report", margin, y);
+      y += line * 1.2;
+
+      // Candidate and session meta
+      textBlock(`Candidate: ${selectedCand.name || "Unnamed"}`, 12, true);
+      textBlock(`Email: ${selectedCand.email || "—"}`);
+      textBlock(`Session ID: ${selectedSession.id}`);
+      textBlock(`Status: ${selectedSession.status}`);
+      const avg =
+        selectedSession.evaluations.length > 0
+          ? selectedSession.evaluations.reduce(
+              (a: number, e: any) => a + e.score,
+              0
+            ) / selectedSession.evaluations.length
+          : 0;
+      textBlock(`Overall (avg): ${avg.toFixed(1)} / 10`);
+      const totalQs = (selectedSession.questionSequence || []).length || 6;
+      textBlock(`Progress: ${selectedSession.currentQuestionIndex}/${totalQs}`);
+      y += line * 0.5;
+
+      // Final report (if available)
+      if (selectedSession.finalReport) {
+        ensureSpace(line);
+        doc.setFontSize(14);
+        doc.setFont("helvetica", "bold");
+        doc.text("Final Evaluation", margin, y);
+        y += line;
+
+        const fr = selectedSession.finalReport;
+        textBlock(`Final Score: ${fr.finalScore} / 100`, 12, true);
+        if (fr.summary) textBlock(`Summary: ${fr.summary}`);
+        if (fr.recommendation)
+          textBlock(`Recommendation: ${fr.recommendation}`);
+
+        if (
+          Array.isArray(fr.perQuestionScores) &&
+          fr.perQuestionScores.length > 0
+        ) {
+          y += line * 0.5;
+          textBlock("Per-question Scores:", 12, true);
+          fr.perQuestionScores.forEach((p: any, idx: number) => {
+            const q = (selectedSession.questionSequence || []).find(
+              (qq: any) => qq.id === p.questionId
+            );
+            textBlock(`Q${idx + 1}: ${q?.text || "—"}`);
+            textBlock(`Score: ${p.score}`);
+            y += line * 0.3;
+          });
+        }
+
+        y += line * 0.5;
+      }
+
+      // Answers & Feedback
+      ensureSpace(line);
+      doc.setFontSize(14);
+      doc.setFont("helvetica", "bold");
+      doc.text("Answers & Feedback", margin, y);
+      y += line;
+
+      const answers = selectedSession.answers || [];
+      answers.forEach((ans: any, idx: number) => {
+        const q = (selectedSession.questionSequence || []).find(
+          (qq: any) => qq.id === ans.questionId
+        );
+        const ev = (selectedSession.evaluations || []).find(
+          (e: any) => e.answerId === ans.id
+        );
+
+        textBlock(`Q${idx + 1}: ${q?.text || "—"}`, 12, true);
+        if (ans?.text) textBlock(`Answer: ${ans.text}`);
+        if (ev) {
+          textBlock(`Score: ${ev.score} / 10`);
+          if (ev.feedback) textBlock(`Feedback: ${ev.feedback}`);
+        }
+        y += line * 0.5;
+      });
+
+      const safeName = (selectedCand.name || "Candidate").replace(/\s+/g, "_");
+      const filename = `${safeName}-session-${selectedSession.id}.pdf`;
+      doc.save(filename);
+      toast.success("PDF downloaded.");
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to generate PDF.");
+    }
+  }
 
   return (
     <main className="mx-auto grid max-w-7xl grid-cols-1 gap-6 p-4 md:grid-cols-12">
@@ -279,7 +407,16 @@ export default function InterviewerPage() {
                 </div>
 
                 {/* Actions */}
-                <div className="flex gap-2 pt-2">
+                <div className="flex flex-wrap gap-2 pt-2">
+                  {/* Download PDF action */}
+                  <Button
+                    variant="outline"
+                    onClick={handleDownloadPdf}
+                    disabled={!selectedSession || !selectedCand}
+                  >
+                    Download PDF
+                  </Button>
+
                   <Button
                     onClick={async () => {
                       if (!selectedSession) return;
