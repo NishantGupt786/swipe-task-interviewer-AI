@@ -11,6 +11,9 @@ import { Toaster } from "sonner"
 export const metadata: Metadata = {
   title: "Swipe Task - AI Interviewer",
   description: "AI-powered technical interview platform",
+  icons: {
+    icon: "/favicon.ico",
+  }
 }
 
 export default function RootLayout({

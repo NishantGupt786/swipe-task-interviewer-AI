@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import textToSpeech from "@google-cloud/text-to-speech"
-import fs from "fs"
-import util from "util"
 
-// Ensure credentials are loaded
-process.env.GOOGLE_APPLICATION_CREDENTIALS = process.env.GOOGLE_APPLICATION_CREDENTIALS || "./google-tts-key.json"
+const credentials = JSON.parse(process.env.GCP_KEY_JSON || "{}")
 
-const client = new textToSpeech.TextToSpeechClient()
+const client = new textToSpeech.TextToSpeechClient({
+  credentials,
+})
 
 export async function POST(req: NextRequest) {
   try {
